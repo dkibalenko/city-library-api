@@ -45,23 +45,5 @@ class User(AbstractUser):
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
-    
-    groups = models.ManyToManyField(
-        "auth.Group",
-        related_name="custom_user_set",
-        blank=True,
-        help_text=_(
-            "The groups this user belongs to.A user will get all permissions \
-                granted to each of their groups."
-        ),
-        verbose_name=_("groups"),
-    )
-    user_permissions = models.ManyToManyField(
-        "auth.Permission",
-        related_name="custom_user_set",
-        blank=True,
-        help_text=_("Specific permissions for this user."),
-        verbose_name=_("user permissions"),
-    )
 
     objects = UserManager()

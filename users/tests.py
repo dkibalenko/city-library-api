@@ -2,13 +2,10 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 
-from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.test import APITestCase
-from rest_framework import serializers
 from rest_framework import status
 
 from users.serializers import UserSerializer
-from users.views import UserViewSet
 
 
 class UserTests(TestCase):
@@ -83,7 +80,6 @@ class UserSerializerTests(APITestCase):
 
 class UserViewSetTests(APITestCase):
     def setUp(self):
-        self.view = UserViewSet()
         self.user = get_user_model().objects.create_user(
             email="user@example.com",
             password="userpassword"

@@ -15,11 +15,6 @@ router.register(r"users", UserViewSet)
 
 urlpatterns = [
     path("", include(router.urls), name="users"),
-]
-
-
-urlpatterns = [
-    path("", include(router.urls)),
     path(
         "token/",
         TokenObtainPairView.as_view(),

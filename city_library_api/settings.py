@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "books",
     "users",
+    "borrowings",
     "rest_framework",
     "rest_framework_simplejwt",
 ]

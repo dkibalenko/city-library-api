@@ -78,7 +78,7 @@ class UserSerializerTests(APITestCase):
         self.assertEqual(updated_user.email, payload["email"])
 
 
-class UserViewSetTests(APITestCase):
+class UserViewsTests(APITestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(
             email="user@example.com",
@@ -95,19 +95,16 @@ class UserViewSetTests(APITestCase):
             "password": "testpassword2"
         }
         response = self.client.post(
-            reverse("users:user-list"),
+            reverse("users:users"),
             data=payload
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["email"], payload["email"])
 
-    def test_non_admin_user_cannot_perform_non_create_actions(self):
-        self.client.force_authenticate(user=self.user)
-        response = self.client.get(reverse("users:user-list"))
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        
-    def test_admin_user_can_perform_all_actions(self):
+    def test_manage_user_get_objects(self):
         self.client.force_authenticate(user=self.admin_user)
-        response = self.client.get(reverse("users:user-list"))
+        response = self.client.get(
+            reverse("users:me")
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(response.data["email"], self.admin_user.email)

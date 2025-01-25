@@ -4,11 +4,11 @@ from borrowings.models import Borrowing
 from borrowings.serializers import BorrowingSerializer
 
 
-class BorrowingList(generics.ListAPIView):
+class BorrowingListView(generics.ListCreateAPIView):
     queryset = Borrowing.objects.all()
     serializer_class = BorrowingSerializer
 
 
-class BorrowingDetail(generics.RetrieveAPIView):
+class BorrowingDetailView(generics.RetrieveAPIView):
     queryset = Borrowing.objects.all()
     serializer_class = BorrowingSerializer

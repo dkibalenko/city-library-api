@@ -4,10 +4,12 @@ from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
 
 from rest_framework.exceptions import ValidationError
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from borrowings.models import Borrowing
 from books.models import Book
 from borrowings.serializers import BorrowingSerializer
+from borrowings.views import BorrowingListView
 
 
 class BorrowingModelTest(TestCase):
@@ -182,3 +184,95 @@ class BorrowingSerializerTest(TestCase):
             data["actual_return_date"],
             borrowing.actual_return_date,
         )
+
+
+class BorrowingListViewTest(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.admin_user = get_user_model().objects.create_superuser(
+            email="admin@example.com", password="adminpassword"
+        )
+        self.user_1 = get_user_model().objects.create_user(
+            email="user1@example.com", password="user1password"
+        )
+        self.user_2 = get_user_model().objects.create_user(
+            email="user2@example.com", password="user2password"
+        )
+        self.book = Book.objects.create(
+            title="Sample Book",
+            author="Author",
+            cover=Book.SOFT,
+            inventory=1,
+            daily_fee=1.50,
+        )
+        self.borrowing_1 = Borrowing.objects.create(
+            book=self.book,
+            user=self.user_1,
+            borrow_date="2025-01-01",
+            expected_return_date="2025-01-10"
+        )
+        self.borrowing_2 = Borrowing.objects.create(
+            book=self.book,
+            user=self.user_2,
+            borrow_date="2025-01-05",
+            expected_return_date="2025-01-15",
+            actual_return_date="2025-01-12",
+        )
+
+    def test_init_method_initialize_queryset(self):
+        view = BorrowingListView()
+        self.assertIsNotNone(view.queryset)
+        self.assertEqual(list(view.queryset), list(Borrowing.objects.all()))
+
+    def test_get_queryset_superuser(self):
+        request = APIRequestFactory().get("/borrowings/")
+        force_authenticate(request, user=self.admin_user)
+        view = BorrowingListView.as_view()
+        response = view(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 2)
+        self.assertEqual(response.data[0]["id"], self.borrowing_1.id)
+        self.assertEqual(response.data[1]["id"], self.borrowing_2.id)
+
+    def test_get_queryset_regular_user(self):
+        request = APIRequestFactory().get("/borrowings/")
+        force_authenticate(request, user=self.user_1)
+        view = BorrowingListView.as_view()
+        response = view(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], self.borrowing_1.id)
+
+    def test_get_queryset_user_filtered_by_is_active(self):
+        request = APIRequestFactory().get("/borrowings/?is_active=true")
+        force_authenticate(request, user=self.user_1)
+        view = BorrowingListView.as_view()
+        response = view(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["user_email"], self.user_1.email)
+
+    def test_get_queryset_user_filtered_by_is_not_active(self):
+        request = APIRequestFactory().get("/borrowings/?is_active=false")
+        force_authenticate(request, user=self.user_2)
+        view = BorrowingListView.as_view()
+        response = view(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["user_email"], self.user_2.email)
+
+    def test_get_queryset_superuser_filtered_by_user_id(self):
+        request = APIRequestFactory().get(
+            f"/borrowings/?user_id={self.user_1.id}"
+        )
+        force_authenticate(request, user=self.admin_user)
+        view = BorrowingListView.as_view()
+        response = view(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["user_email"], self.user_1.email)

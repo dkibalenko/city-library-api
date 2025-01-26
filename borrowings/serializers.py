@@ -11,6 +11,7 @@ class BorrowingSerializer(serializers.ModelSerializer):
         queryset=Book.objects.all(),
     )
     user_email = serializers.StringRelatedField(source="user.email")
+    is_active = serializers.SerializerMethodField()
 
     class Meta:
         model = Borrowing
@@ -21,9 +22,13 @@ class BorrowingSerializer(serializers.ModelSerializer):
             "borrow_date",
             "expected_return_date",
             "actual_return_date",
+            "is_active",
         )
         
         depth = 1
+
+    def get_is_active(self, obj):
+        return obj.actual_return_date is None
 
     def validate_book(self, value):
         if value.inventory <= 0:

@@ -2,14 +2,16 @@ from django.test import TestCase, RequestFactory
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
+from django.urls import reverse
 
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIRequestFactory, force_authenticate
+from rest_framework import status
 
 from borrowings.models import Borrowing
 from books.models import Book
 from borrowings.serializers import BorrowingSerializer
-from borrowings.views import BorrowingListView
+from borrowings.views import BorrowingListView, BorrowingReturnView
 
 
 class BorrowingModelTest(TestCase):
@@ -276,3 +278,46 @@ class BorrowingListViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["user_email"], self.user_1.email)
+
+
+class BorrowingReturnViewTest(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.user = get_user_model().objects.create_user(
+            email="testuser@example", password="testpass"
+        )
+        self.book = Book.objects.create(
+            title="Sample Book",
+            author="Author",
+            cover=Book.SOFT,
+            inventory=1,
+            daily_fee=1.50,
+        )
+        self.borrowing = Borrowing.objects.create(
+            borrow_date=timezone.now().date(),
+            expected_return_date=(
+                timezone.now().date() + timezone.timedelta(days=7)
+            ),
+            book=self.book,
+            user=self.user
+        )
+
+    def test_get_borrowing(self):
+        request = self.factory.get(f"/borrowings/{self.borrowing.id}/return/")
+        force_authenticate(request, user=self.user)
+        view = BorrowingReturnView.as_view()
+        response = view(request, pk=self.borrowing.id)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.borrowing.id)
+
+    def test_successful_post_return_borrowing_with_actual_return_date(self):
+        request = self.factory.post(f"/borrowings/{self.borrowing.id}/return/")
+        force_authenticate(request, user=self.user)
+        view = BorrowingReturnView.as_view()
+        response = view(request, pk=self.borrowing.id)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.borrowing.id)
+        self.assertEqual(
+            response.data["actual_return_date"],
+            timezone.now().date().isoformat()
+        )

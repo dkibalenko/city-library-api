@@ -27,6 +27,11 @@ class BorrowingSerializer(serializers.ModelSerializer):
         
         depth = 1
 
+        read_only_fields = (
+            "id",
+            "actual_return_date",
+        )
+
     def get_is_active(self, obj):
         return obj.actual_return_date is None
 
@@ -60,3 +65,51 @@ class BorrowingSerializer(serializers.ModelSerializer):
         representation = super().to_representation(instance)
         representation["book"] = BookSerializer(instance.book).data
         return representation
+
+
+class BorrowingDetailSerializer(BorrowingSerializer):
+    actual_return_date = serializers.DateField(required=False)
+    book = BookSerializer(read_only=True)
+
+
+    class Meta:
+        model = Borrowing
+        fields = (
+            "id",
+            "book",
+            "user_email",
+            "borrow_date",
+            "expected_return_date",
+            "actual_return_date",
+            "is_active",
+        )
+        depth = 1
+
+        read_only_fields = (
+            "id",
+            "borrow_date",
+            "expected_return_date",
+            "user_email",
+            "is_active",
+        )
+
+
+class BorrowingReturnSerializer(BorrowingDetailSerializer):
+    actual_return_date = serializers.DateField(read_only=True)
+    
+    class Meta:
+        model = Borrowing
+        fields = (
+            "id",
+            "book",
+            "borrow_date",
+            "expected_return_date",
+            "actual_return_date",
+        )
+
+        read_only_fields = (
+            "id",
+            "borrow_date",
+            "expected_return_date",
+            "actual_return_date",
+        )

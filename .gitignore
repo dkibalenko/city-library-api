@@ -5,3 +5,5 @@ db.sqlite3
 .env
 .coverage
 coverage.xml
+test_telegram.py
+

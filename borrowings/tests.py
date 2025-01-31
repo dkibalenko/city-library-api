@@ -1,8 +1,10 @@
+import os, unittest, requests
+from unittest.mock import patch, MagicMock
+
 from django.test import TestCase, RequestFactory
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
-from django.urls import reverse
 
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIRequestFactory, force_authenticate
@@ -12,6 +14,7 @@ from borrowings.models import Borrowing
 from books.models import Book
 from borrowings.serializers import BorrowingSerializer
 from borrowings.views import BorrowingListView, BorrowingReturnView
+from borrowings.telegram_bot import send_telegram_message
 
 
 class BorrowingModelTest(TestCase):
@@ -38,22 +41,19 @@ class BorrowingModelTest(TestCase):
         self.assertEqual(str(self.borrowing), expected_str)
 
     def test_borrow_date_lte_expected_return_date(self):
-        self.borrowing.expected_return_date = (
-            timezone.now() - timezone.timedelta(days=1)
+        self.borrowing.expected_return_date = timezone.now() - timezone.timedelta(
+            days=1
         )
         with self.assertRaises(IntegrityError):
             self.borrowing.save()
 
     def test_actual_return_date_gte_borrow_date_or_null(self):
-        self.borrowing.actual_return_date = (
-            timezone.now() - timezone.timedelta(days=1)
-        )
+        self.borrowing.actual_return_date = timezone.now() - timezone.timedelta(days=1)
         with self.assertRaises(IntegrityError):
             self.borrowing.save()
 
 
 class BorrowingSerializerTest(TestCase):
-
     def setUp(self):
         self.factory = RequestFactory()
         self.book = Book.objects.create(
@@ -72,7 +72,6 @@ class BorrowingSerializerTest(TestCase):
                 timezone.now() + timezone.timedelta(days=7)
             ).date(),
             "book": self.book.id,
-            # "user": self.user,
         }
         self.request = self.factory.get("/")
         self.request.user = self.user
@@ -92,7 +91,10 @@ class BorrowingSerializerTest(TestCase):
             )
             serializer.is_valid(raise_exception=True)
 
-    def test_successful_create_borrowing_with_atomic_transaction(self):
+    @patch("borrowings.serializers.send_telegram_message")
+    def test_successful_create_borrowing_with_atomic_transaction(
+        self, mock_send_message
+    ):
         serializer = BorrowingSerializer(
             data=self.borrowing_data, context={"request": self.request}
         )
@@ -105,8 +107,13 @@ class BorrowingSerializerTest(TestCase):
 
         self.book.refresh_from_db()
         self.assertEqual(self.book.inventory, 0)
+        mock_send_message.assert_called_once()
 
-    def test_rollback_create_borrowing_with_atomic_transaction(self):
+    @patch("borrowings.serializers.send_telegram_message")
+    def test_rollback_create_borrowing_with_atomic_transaction(
+        self,
+        mock_send_message
+    ):
         original_inventory = self.book.inventory
 
         try:
@@ -128,6 +135,7 @@ class BorrowingSerializerTest(TestCase):
 
         self.book.refresh_from_db()
         self.assertEqual(self.book.inventory, original_inventory)
+        mock_send_message.assert_called()
 
     def test_create_borrowing_with_db_integrity_error(self):
         try:
@@ -211,7 +219,7 @@ class BorrowingListViewTest(TestCase):
             book=self.book,
             user=self.user_1,
             borrow_date="2025-01-01",
-            expected_return_date="2025-01-10"
+            expected_return_date="2025-01-10",
         )
         self.borrowing_2 = Borrowing.objects.create(
             book=self.book,
@@ -299,7 +307,7 @@ class BorrowingReturnViewTest(TestCase):
                 timezone.now().date() + timezone.timedelta(days=7)
             ),
             book=self.book,
-            user=self.user
+            user=self.user,
         )
 
     def test_get_borrowing(self):
@@ -321,3 +329,56 @@ class BorrowingReturnViewTest(TestCase):
             response.data["actual_return_date"],
             timezone.now().date().isoformat()
         )
+
+
+class TelegramBotTest(unittest.TestCase):
+    def setUp(self):
+        self.test_message = "Test Message"
+        self.test_token = "123456:test_token"
+        self.test_chat_id = "123456789"
+
+        os.environ["TELEGRAM_BOT_TOKEN"] = self.test_token
+        os.environ["TELEGRAM_CHAT_ID"] = self.test_chat_id
+
+    @patch("requests.post")
+    def test_send_telegram_message_success(self, mock_post):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        result = send_telegram_message(self.test_message)
+
+        self.assertTrue(result)
+        mock_post.assert_called_once_with(
+            f"https://api.telegram.org/bot{self.test_token}/sendMessage",
+            json={
+                "chat_id": self.test_chat_id,
+                "text": self.test_message,
+                "parse_mode": "HTML",
+            },
+        )
+
+    @patch("requests.post")
+    def test_send_telegram_message_http_error(self, mock_post):
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.raise_for_status.side_effect = requests.exceptions.\
+            HTTPError("Bad request")
+        mock_post.return_value = mock_response
+
+        result = send_telegram_message(self.test_message)
+
+        self.assertFalse(result)
+        mock_post.assert_called_once()
+
+    @patch("requests.post")
+    def test_send_telegram_message_request_exception(self, mock_post):
+        mock_post.side_effect = requests.exceptions.RequestException(
+            "Network error"
+        )
+
+        result = send_telegram_message(self.test_message)
+
+        self.assertFalse(result)
+        mock_post.assert_called_once()

@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from borrowings.models import Borrowing, Book
 from books.serializers import BookSerializer
+from borrowings.telegram_bot import send_telegram_message
 
 
 class BorrowingSerializer(serializers.ModelSerializer):
@@ -24,7 +25,7 @@ class BorrowingSerializer(serializers.ModelSerializer):
             "actual_return_date",
             "is_active",
         )
-        
+
         depth = 1
 
         read_only_fields = (
@@ -41,20 +42,35 @@ class BorrowingSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        book = validated_data.pop("book")
+        user = self.context["request"].user
+        borrowing = None
+
         with transaction.atomic():
-            book = validated_data.pop("book")
-            user = self.context["request"].user
             try:
                 borrowing = Borrowing.objects.create(
                     book=book, user=user, **validated_data
                 )
                 book.inventory -= 1
                 book.save()
-                return borrowing
             except IntegrityError as e:
                 raise serializers.ValidationError(
                     f"Failed to create borrowing due to integrity error: {e}"
                 )
+            
+        if borrowing:
+            message = f"""
+                <b>New Borrowing Created:</b>
+                <pre>User: {user.email}</pre>
+                <pre>Book: {book.title}</pre>
+                <pre>Borrow Date: {borrowing.borrow_date}</pre>
+                <pre>
+                    Expected Return Date: {borrowing.expected_return_date}
+                </pre>
+            """
+            send_telegram_message(message)
+
+        return borrowing
 
     def to_representation(self, instance):
         """
@@ -70,7 +86,6 @@ class BorrowingSerializer(serializers.ModelSerializer):
 class BorrowingDetailSerializer(BorrowingSerializer):
     actual_return_date = serializers.DateField(required=False)
     book = BookSerializer(read_only=True)
-
 
     class Meta:
         model = Borrowing
@@ -96,7 +111,7 @@ class BorrowingDetailSerializer(BorrowingSerializer):
 
 class BorrowingReturnSerializer(BorrowingDetailSerializer):
     actual_return_date = serializers.DateField(read_only=True)
-    
+
     class Meta:
         model = Borrowing
         fields = (

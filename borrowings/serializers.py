@@ -8,11 +8,21 @@ from borrowings.telegram_bot import send_telegram_message
 
 
 class BorrowingSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Borrowing model.
+    """
     book = serializers.PrimaryKeyRelatedField(
         queryset=Book.objects.all(),
+        help_text="ID of the book to borrow",
     )
-    user_email = serializers.StringRelatedField(source="user.email")
-    is_active = serializers.SerializerMethodField()
+    user_email = serializers.StringRelatedField(
+        read_only=True,
+        source="user.email",
+        help_text="Email of the user who borrowed the book",
+    )
+    is_active = serializers.SerializerMethodField(
+        help_text="Indicates if the borrowing is active (not returned)."
+    )
 
     class Meta:
         model = Borrowing
@@ -33,15 +43,15 @@ class BorrowingSerializer(serializers.ModelSerializer):
             "actual_return_date",
         )
 
-    def get_is_active(self, obj):
+    def get_is_active(self, obj) -> bool:
         return obj.actual_return_date is None
 
-    def validate_book(self, value):
+    def validate_book(self, value) -> Book:
         if value.inventory <= 0:
             raise serializers.ValidationError("Book is not available")
         return value
 
-    def create(self, validated_data):
+    def create(self, validated_data) -> Borrowing:
         book = validated_data.pop("book")
         user = self.context["request"].user
         borrowing = None
@@ -72,7 +82,7 @@ class BorrowingSerializer(serializers.ModelSerializer):
 
         return borrowing
 
-    def to_representation(self, instance):
+    def to_representation(self, instance) -> dict:
         """
         Customize the representation of Borrowing objects by including the
         book's representation (using BookSerializer) instead of just the book's
@@ -84,8 +94,18 @@ class BorrowingSerializer(serializers.ModelSerializer):
 
 
 class BorrowingDetailSerializer(BorrowingSerializer):
-    actual_return_date = serializers.DateField(required=False)
-    book = BookSerializer(read_only=True)
+    """
+    Serializer for the borrowing details, should be used in GET requests
+    for getting specific borrowing
+    """
+    actual_return_date = serializers.DateField(
+        required=False,
+        help_text="Date when the book was returned",
+    )
+    book = BookSerializer(
+        read_only=True,
+        help_text="Details of the book borrowed",
+    )
 
     class Meta:
         model = Borrowing
@@ -110,7 +130,14 @@ class BorrowingDetailSerializer(BorrowingSerializer):
 
 
 class BorrowingReturnSerializer(BorrowingDetailSerializer):
-    actual_return_date = serializers.DateField(read_only=True)
+    """
+    Serializer for the borrowing return, should be used in POST requests
+    for returning specific borrowing
+    """
+    actual_return_date = serializers.DateField(
+        read_only=True,
+        help_text="Date when the book was returned",
+    )
 
     class Meta:
         model = Borrowing

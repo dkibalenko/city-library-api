@@ -27,3 +27,7 @@ python manage.py migrate
 python manage.py runserver
 python python manage.py runserver
 ```
+## Test User
+
+Email: `admin@test.com`
+Password: `admin12345`

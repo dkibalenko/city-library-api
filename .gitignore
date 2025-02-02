@@ -6,4 +6,4 @@ db.sqlite3
 .coverage
 coverage.xml
 test_telegram.py
-
+data/
